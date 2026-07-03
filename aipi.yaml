@@ -75,6 +75,29 @@ sensor:
             id: tilt_roll
             value: !lambda 'return x;'
 
+# There's no mqtt_subscribe platform for binary_sensor in ESPHome (only
+# sensor/text_sensor support it), so the tap event is subscribed as a
+# text_sensor and the shake sequence is triggered manually on "ON".
+text_sensor:
+  - platform: mqtt_subscribe
+    name: "Claw Node Tap In"
+    id: node_tap_in
+    topic: clawnode/tap
+    internal: true
+    on_value:
+      then:
+        - if:
+            condition:
+              lambda: 'return x == "ON";'
+            then:
+              - globals.set:
+                  id: shake_active
+                  value: 'true'
+              - delay: 500ms
+              - globals.set:
+                  id: shake_active
+                  value: 'false'
+
 font:
   - file: "gfonts://Roboto"
     id: my_font
@@ -198,22 +221,6 @@ switch:
 
 #Expose button to Home Assistant, play a short beep when right button clicked
 binary_sensor:
-  - platform: mqtt_subscribe
-    name: "Claw Node Tap In"
-    id: node_tap_in
-    topic: clawnode/tap
-    payload_on: "ON"
-    payload_off: "OFF"
-    internal: true
-    on_press:
-      then:
-        - globals.set:
-            id: shake_active
-            value: 'true'
-        - delay: 500ms
-        - globals.set:
-            id: shake_active
-            value: 'false'
   - platform: gpio
     pin: GPIO42
     name: "Right Button"
