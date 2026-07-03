@@ -81,24 +81,6 @@ sensor:
             id: tilt_roll
             value: !lambda 'return x;'
 
-binary_sensor:
-  - platform: mqtt_subscribe
-    name: "Claw Node Tap In"
-    id: node_tap_in
-    topic: clawnode/tap
-    payload_on: "ON"
-    payload_off: "OFF"
-    internal: true
-    on_press:
-      then:
-        - globals.set:
-            id: shake_active
-            value: 'true'
-        - delay: 500ms
-        - globals.set:
-            id: shake_active
-            value: 'false'
-
 font:
   - file: "gfonts://Roboto"
     id: my_font
@@ -209,6 +191,22 @@ switch:
 
 #Expose button to Home Assistant, play a short beep when right button clicked
 binary_sensor:
+  - platform: mqtt_subscribe
+    name: "Claw Node Tap In"
+    id: node_tap_in
+    topic: clawnode/tap
+    payload_on: "ON"
+    payload_off: "OFF"
+    internal: true
+    on_press:
+      then:
+        - globals.set:
+            id: shake_active
+            value: 'true'
+        - delay: 500ms
+        - globals.set:
+            id: shake_active
+            value: 'false'
   - platform: gpio
     pin: GPIO42
     name: "Right Button"
