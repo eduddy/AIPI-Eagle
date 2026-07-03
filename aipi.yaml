@@ -52,12 +52,6 @@ globals:
   - id: shake_active
     type: bool
     initial_value: 'false'
-  - id: cube_px
-    type: float[8]
-    initial_value: '{64, 64, 64, 64, 64, 64, 64, 64}'
-  - id: cube_py
-    type: float[8]
-    initial_value: '{64, 64, 64, 64, 64, 64, 64, 64}'
 
 sensor:
   - platform: mqtt_subscribe
@@ -118,25 +112,30 @@ lvgl:
 
 #Redraw the wireframe cube ~20x/sec, rotated by the latest tilt_pitch/tilt_roll
 #globals (fed from MQTT) and jittered while shake_active is true (tap event).
-#Vertex screen positions are computed once into the cube_px/cube_py globals,
-#then each fixed edge is drawn with its own lvgl.canvas.draw_line action
-#(edges: 0-1 1-2 2-3 3-0 | 4-5 5-6 6-7 7-4 | 0-4 1-5 2-6 3-7 of a unit cube).
+#ESPHome's lvgl.canvas.draw_line action only accepts literal integer points
+#(it validates with isinstance(x, int), no !lambda), so per-frame coordinates
+#have to go through LVGL's native layer/draw-descriptor API directly instead.
 interval:
   - interval: 50ms
     then:
-      - lvgl.canvas.fill:
-          id: face_canvas
-          color: 0x000000
       - lambda: |-
           static const float verts[8][3] = {
             {-1, -1, -1}, {1, -1, -1}, {1, 1, -1}, {-1, 1, -1},
             {-1, -1, 1}, {1, -1, 1}, {1, 1, 1}, {-1, 1, 1},
+          };
+          static const int edges[12][2] = {
+            {0, 1}, {1, 2}, {2, 3}, {3, 0},
+            {4, 5}, {5, 6}, {6, 7}, {7, 4},
+            {0, 4}, {1, 5}, {2, 6}, {3, 7},
           };
 
           float pitch = id(tilt_pitch) * 3.14159265f / 180.0f;
           float roll = id(tilt_roll) * 3.14159265f / 180.0f;
           float cx = 64, cy = 64, scale = 30;
 
+          lv_canvas_fill_bg(id(face_canvas), lv_color_hex(0x000000), LV_OPA_COVER);
+
+          int sx[8], sy[8];
           for (int i = 0; i < 8; i++) {
             float x = verts[i][0], y = verts[i][1], z = verts[i][2];
 
@@ -150,29 +149,37 @@ interval:
 
             // simple perspective projection
             float depth = 4.0f + z2;
-            float sx = cx + (x2 * scale * 4.0f) / depth;
-            float sy = cy + (y1 * scale * 4.0f) / depth;
+            float px = cx + (x2 * scale * 4.0f) / depth;
+            float py = cy + (y1 * scale * 4.0f) / depth;
 
             if (id(shake_active)) {
-              sx += (float) (random_uint32() % 7) - 3.0f;
-              sy += (float) (random_uint32() % 7) - 3.0f;
+              px += (float) (random_uint32() % 7) - 3.0f;
+              py += (float) (random_uint32() % 7) - 3.0f;
             }
 
-            id(cube_px)[i] = sx;
-            id(cube_py)[i] = sy;
+            sx[i] = (int) roundf(px);
+            sy[i] = (int) roundf(py);
           }
-      - lvgl.canvas.draw_line: {id: face_canvas, color: 0x00C8FF, points: [{x: !lambda "return (int) id(cube_px)[0];", y: !lambda "return (int) id(cube_py)[0];"}, {x: !lambda "return (int) id(cube_px)[1];", y: !lambda "return (int) id(cube_py)[1];"}]}
-      - lvgl.canvas.draw_line: {id: face_canvas, color: 0x00C8FF, points: [{x: !lambda "return (int) id(cube_px)[1];", y: !lambda "return (int) id(cube_py)[1];"}, {x: !lambda "return (int) id(cube_px)[2];", y: !lambda "return (int) id(cube_py)[2];"}]}
-      - lvgl.canvas.draw_line: {id: face_canvas, color: 0x00C8FF, points: [{x: !lambda "return (int) id(cube_px)[2];", y: !lambda "return (int) id(cube_py)[2];"}, {x: !lambda "return (int) id(cube_px)[3];", y: !lambda "return (int) id(cube_py)[3];"}]}
-      - lvgl.canvas.draw_line: {id: face_canvas, color: 0x00C8FF, points: [{x: !lambda "return (int) id(cube_px)[3];", y: !lambda "return (int) id(cube_py)[3];"}, {x: !lambda "return (int) id(cube_px)[0];", y: !lambda "return (int) id(cube_py)[0];"}]}
-      - lvgl.canvas.draw_line: {id: face_canvas, color: 0x00C8FF, points: [{x: !lambda "return (int) id(cube_px)[4];", y: !lambda "return (int) id(cube_py)[4];"}, {x: !lambda "return (int) id(cube_px)[5];", y: !lambda "return (int) id(cube_py)[5];"}]}
-      - lvgl.canvas.draw_line: {id: face_canvas, color: 0x00C8FF, points: [{x: !lambda "return (int) id(cube_px)[5];", y: !lambda "return (int) id(cube_py)[5];"}, {x: !lambda "return (int) id(cube_px)[6];", y: !lambda "return (int) id(cube_py)[6];"}]}
-      - lvgl.canvas.draw_line: {id: face_canvas, color: 0x00C8FF, points: [{x: !lambda "return (int) id(cube_px)[6];", y: !lambda "return (int) id(cube_py)[6];"}, {x: !lambda "return (int) id(cube_px)[7];", y: !lambda "return (int) id(cube_py)[7];"}]}
-      - lvgl.canvas.draw_line: {id: face_canvas, color: 0x00C8FF, points: [{x: !lambda "return (int) id(cube_px)[7];", y: !lambda "return (int) id(cube_py)[7];"}, {x: !lambda "return (int) id(cube_px)[4];", y: !lambda "return (int) id(cube_py)[4];"}]}
-      - lvgl.canvas.draw_line: {id: face_canvas, color: 0x00C8FF, points: [{x: !lambda "return (int) id(cube_px)[0];", y: !lambda "return (int) id(cube_py)[0];"}, {x: !lambda "return (int) id(cube_px)[4];", y: !lambda "return (int) id(cube_py)[4];"}]}
-      - lvgl.canvas.draw_line: {id: face_canvas, color: 0x00C8FF, points: [{x: !lambda "return (int) id(cube_px)[1];", y: !lambda "return (int) id(cube_py)[1];"}, {x: !lambda "return (int) id(cube_px)[5];", y: !lambda "return (int) id(cube_py)[5];"}]}
-      - lvgl.canvas.draw_line: {id: face_canvas, color: 0x00C8FF, points: [{x: !lambda "return (int) id(cube_px)[2];", y: !lambda "return (int) id(cube_py)[2];"}, {x: !lambda "return (int) id(cube_px)[6];", y: !lambda "return (int) id(cube_py)[6];"}]}
-      - lvgl.canvas.draw_line: {id: face_canvas, color: 0x00C8FF, points: [{x: !lambda "return (int) id(cube_px)[3];", y: !lambda "return (int) id(cube_py)[3];"}, {x: !lambda "return (int) id(cube_px)[7];", y: !lambda "return (int) id(cube_py)[7];"}]}
+
+          lv_layer_t layer;
+          lv_canvas_init_layer(id(face_canvas), &layer);
+
+          lv_draw_line_dsc_t line_dsc;
+          lv_draw_line_dsc_init(&line_dsc);
+          line_dsc.color = lv_color_hex(0x00C8FF);
+          line_dsc.width = 2;
+          line_dsc.opa = LV_OPA_COVER;
+
+          for (int i = 0; i < 12; i++) {
+            int a = edges[i][0], b = edges[i][1];
+            line_dsc.p1.x = sx[a];
+            line_dsc.p1.y = sy[a];
+            line_dsc.p2.x = sx[b];
+            line_dsc.p2.y = sy[b];
+            lv_draw_line(&layer, &line_dsc);
+          }
+
+          lv_canvas_finish_layer(id(face_canvas), &layer);
 
 #Add switches for the LCD backlight and speaker enable
 switch:
