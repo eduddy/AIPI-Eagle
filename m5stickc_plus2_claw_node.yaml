@@ -1,0 +1,125 @@
+esphome:
+  name: m5stick-claw
+  friendly_name: M5Stick Claw Node
+
+esp32:
+  board: m5stick-c
+  framework:
+    type: arduino
+
+logger:
+
+api:
+  encryption:
+    key: "XXXXXXXXXXXXXXXXXXX="
+
+ota:
+  - platform: esphome
+    password: "XXXXXXXXXXXXXXXXXXX"
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+
+  ap:
+    ssid: "Claw Node Fallback Hotspot"
+    password: "JFjmkWkpP0ES"
+
+captive_portal:
+
+# POC transport: MQTT. Both boards join the same broker; the AiPi X-Lite
+# subscribes to the sensor/binary_sensor state topics published below.
+mqtt:
+  broker: !secret mqtt_broker
+  username: !secret mqtt_username
+  password: !secret mqtt_password
+  discovery: false
+
+# BMI270 IMU on the M5StickC Plus2's internal I2C bus
+i2c:
+  sda: GPIO21
+  scl: GPIO22
+  scan: true
+
+motion:
+  - platform: bmi270
+    address: 0x68
+    accelerometer_range: 4G
+    accelerometer_odr: 100HZ
+    gyroscope_range: 2000DPS
+    gyroscope_odr: 200HZ
+
+sensor:
+  # Orientation angles used to rotate the avatar on the AiPi side.
+  # Published to explicit, hand-picked topics (rather than ESPHome's
+  # auto-generated name-based topic) so both boards agree on the string.
+  - platform: motion
+    type: pitch
+    name: "Claw Node Pitch"
+    id: node_pitch
+    update_interval: 50ms
+    on_value:
+      then:
+        - mqtt.publish:
+            topic: clawnode/pitch
+            payload: !lambda 'return to_string(x);'
+  - platform: motion
+    type: roll
+    name: "Claw Node Roll"
+    id: node_roll
+    update_interval: 50ms
+    on_value:
+      then:
+        - mqtt.publish:
+            topic: clawnode/roll
+            payload: !lambda 'return to_string(x);'
+
+  # Raw accel axes, kept internal, used only to compute tap magnitude below
+  - platform: motion
+    type: acceleration_x
+    id: accel_x
+    internal: true
+    update_interval: 20ms
+  - platform: motion
+    type: acceleration_y
+    id: accel_y
+    internal: true
+    update_interval: 20ms
+  - platform: motion
+    type: acceleration_z
+    id: accel_z
+    internal: true
+    update_interval: 20ms
+
+  - platform: template
+    name: "Claw Node Accel Magnitude"
+    id: accel_mag
+    internal: true
+    update_interval: 20ms
+    unit_of_measurement: "g"
+    lambda: |-
+      float x = id(accel_x).state;
+      float y = id(accel_y).state;
+      float z = id(accel_z).state;
+      return sqrtf(x * x + y * y + z * z);
+
+binary_sensor:
+  # Software tap detection: a short spike well above resting 1g.
+  # Tune the 2.0g threshold to taste once you see real tap data in the MQTT topic.
+  - platform: template
+    name: "Claw Node Tap"
+    id: node_tap
+    lambda: |-
+      return id(accel_mag).state > 2.0;
+    filters:
+      - delayed_off: 150ms
+    on_press:
+      then:
+        - mqtt.publish:
+            topic: clawnode/tap
+            payload: "ON"
+    on_release:
+      then:
+        - mqtt.publish:
+            topic: clawnode/tap
+            payload: "OFF"

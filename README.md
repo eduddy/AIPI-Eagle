@@ -36,3 +36,11 @@ Download to the device using the web flasher and it should come online in ESPHom
 I was able to receive data from the onboard microphone but I ran into issues getting the microphone to respond to wake words through Home Assistant's Voice Assistant feature. With that figured out, this should be a very low cost way to add a local Voice Assistant to your Home Assistant setup.
 
 I was also running into issues using the left tactile button. Orginally this button was used to wake the display so it is not wired directly to a GPIO pin. Using the button as-is causes the device to hang for 5-15 seconds for some reason. 
+
+## Node-claw POC (AiPi + M5StickC Plus2)
+`m5stickc_plus2_claw_node.yaml` is a proof-of-concept companion config for an M5StickC Plus2, wirelessly linked to the AiPi over MQTT:
+
+- The M5Stick reads its BMI270 IMU and publishes pitch/roll (`clawnode/pitch`, `clawnode/roll`) plus a tap event (`clawnode/tap`, detected as a short acceleration spike) to an MQTT broker.
+- `aipi.yaml` subscribes to those topics and drives a wireframe cube drawn on an LVGL canvas: it tilts with the M5Stick's orientation and jitters briefly on a tap.
+
+Copy `secrets.yaml.example` to `secrets.yaml` and fill in your WiFi and MQTT broker details (any local Mosquitto broker works) before flashing both devices. Tune the tap threshold (`accel_mag > 2.0` in `m5stickc_plus2_claw_node.yaml`) once you see real values in the `clawnode/tap` MQTT topic.
