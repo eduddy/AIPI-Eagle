@@ -30,6 +30,7 @@ captive_portal:
 # POC transport: MQTT. Both boards join the same broker; the AiPi X-Lite
 # subscribes to the sensor/binary_sensor state topics published below.
 mqtt:
+  id: mqtt_client
   broker: !secret mqtt_broker
   username: !secret mqtt_username
   password: !secret mqtt_password
@@ -40,6 +41,79 @@ i2c:
   sda: GPIO21
   scl: GPIO22
   scan: true
+
+# Built-in 1.14" ST7789v2 LCD (135x240) - backlight must be switched on
+# or the screen stays black even once the display driver is initialized.
+switch:
+  - platform: gpio
+    id: display_backlight
+    pin: GPIO27
+    restore_mode: ALWAYS_ON
+
+spi:
+  clk_pin: GPIO13
+  mosi_pin: GPIO15
+
+font:
+  - file: "gfonts://Roboto"
+    id: status_font
+    size: 16
+
+display:
+  - platform: mipi_spi
+    id: claw_display
+    model: ST7789
+    cs_pin: GPIO5
+    dc_pin: GPIO14
+    reset_pin: GPIO12
+    dimensions: 135x240
+    invert_colors: true
+    auto_clear_enabled: false
+    update_interval: never
+
+lvgl:
+  widgets:
+    - label:
+        id: title_label
+        align: TOP_MID
+        y: 10
+        text: "Claw Node"
+        text_font: status_font
+    - label:
+        id: mqtt_status_label
+        align: TOP_MID
+        y: 50
+        text: "MQTT: --"
+        text_font: status_font
+    - label:
+        id: pitch_label
+        align: TOP_MID
+        y: 90
+        text: "Pitch: --"
+        text_font: status_font
+    - label:
+        id: roll_label
+        align: TOP_MID
+        y: 130
+        text: "Roll: --"
+        text_font: status_font
+    - label:
+        id: tap_label
+        align: TOP_MID
+        y: 170
+        text: ""
+        text_font: status_font
+        text_color: 0xFF3030
+
+# Refresh the on-device status readout ~5x/sec.
+interval:
+  - interval: 200ms
+    then:
+      - lambda: |-
+          lv_label_set_text(id(mqtt_status_label),
+              id(mqtt_client)->is_connected() ? "MQTT: connected" : "MQTT: --");
+          lv_label_set_text_fmt(id(pitch_label), "Pitch: %.1f", id(node_pitch).state);
+          lv_label_set_text_fmt(id(roll_label), "Roll: %.1f", id(node_roll).state);
 
 motion:
   - platform: bmi270
@@ -118,8 +192,10 @@ binary_sensor:
         - mqtt.publish:
             topic: clawnode/tap
             payload: "ON"
+        - lambda: 'lv_label_set_text(id(tap_label), "TAP!");'
     on_release:
       then:
         - mqtt.publish:
             topic: clawnode/tap
             payload: "OFF"
+        - lambda: 'lv_label_set_text(id(tap_label), "");'
