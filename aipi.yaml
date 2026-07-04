@@ -8,6 +8,15 @@ esp32:
     type: esp-idf
   flash_size: 16MB
 
+# 16MB-flash ESP32-S3 modules are almost always paired with 8MB octal
+# PSRAM (e.g. N16R8). Without this, the LVGL canvas buffer, display
+# buffer, and the speaker's ring/DMA buffers all compete for the ~300KB
+# internal SRAM pool alone, which likely explains speaker allocation
+# failures under load. If boot logs show PSRAM isn't found, this may
+# need to be 'quad' instead - check your board's exact module datasheet.
+psram:
+  mode: octal
+
 # Enable logging
 logger:
 
@@ -33,7 +42,93 @@ captive_portal:
 
 web_server:
   port: 80
-    
+
+# Node-claw POC: subscribe to the M5StickC Plus2 claw node over the same
+# broker it publishes to (see m5stickc_plus2_claw_node.yaml).
+mqtt:
+  broker: !secret mqtt_broker
+  username: !secret mqtt_username
+  password: !secret mqtt_password
+  discovery: false
+
+globals:
+  - id: tilt_pitch
+    type: float
+    initial_value: '0'
+  - id: tilt_roll
+    type: float
+    initial_value: '0'
+  - id: shake_active
+    type: bool
+    initial_value: 'false'
+
+sensor:
+  - platform: mqtt_subscribe
+    name: "Claw Node Pitch In"
+    id: node_pitch_in
+    topic: clawnode/pitch
+    internal: true
+    on_value:
+      then:
+        - globals.set:
+            id: tilt_pitch
+            value: !lambda 'return x;'
+  - platform: mqtt_subscribe
+    name: "Claw Node Roll In"
+    id: node_roll_in
+    topic: clawnode/roll
+    internal: true
+    on_value:
+      then:
+        - globals.set:
+            id: tilt_roll
+            value: !lambda 'return x;'
+
+# There's no mqtt_subscribe platform for binary_sensor in ESPHome (only
+# sensor/text_sensor support it), so the tap event is subscribed as a
+# text_sensor and the shake sequence is triggered manually on "ON".
+text_sensor:
+  - platform: mqtt_subscribe
+    name: "Claw Node Tap In"
+    id: node_tap_in
+    topic: clawnode/tap
+    internal: true
+    on_value:
+      then:
+        - if:
+            condition:
+              lambda: 'return x == "ON";'
+            then:
+              - globals.set:
+                  id: shake_active
+                  value: 'true'
+              - delay: 500ms
+              - globals.set:
+                  id: shake_active
+                  value: 'false'
+
+  # The M5Stick claw node has no local speaker, so it forwards the Home
+  # Assistant Assist pipeline's TTS reply URL here and the AiPi plays it
+  # through its own ES8311 speaker (see media_player: below).
+  - platform: mqtt_subscribe
+    name: "Claw Node TTS URL In"
+    id: node_tts_url_in
+    topic: clawnode/tts_url
+    internal: true
+    on_value:
+      then:
+        # Guard against empty/retained/duplicate payloads triggering an
+        # overlapping playback request while one is already in flight -
+        # concurrent play_media calls on the same speaker have crashed
+        # the I2S audio pipeline (illegal instruction fault) on hardware.
+        - if:
+            condition:
+              lambda: 'return !x.empty();'
+            then:
+              - media_player.play_media:
+                  id: speaker_media_player_id
+                  media_url: !lambda 'return x;'
+
 font:
   - file: "gfonts://Roboto"
     id: my_font
@@ -54,19 +149,101 @@ display:
     cs_pin: GPIO15
     reset_pin: GPIO18
     dimensions: 128x128
-    rotation: 90
     invert_colors: true
     auto_clear_enabled: false
     update_interval: never
 
-#Basic LVGL widget
+#LVGL widget: a wireframe cube "avatar" that tilts with the claw node's
+#pitch/roll and jitters when it's tapped (see globals + interval below).
+#rotation moved here (from display:) since LVGL owns rotation once it's
+#driving the display.
 lvgl:
+  rotation: 90
   widgets:
-    - label:
+    - canvas:
+        id: face_canvas
         align: CENTER
-        text: 'Hello World!'
-        text_font: my_font
-        text_color: blue
+        width: 128
+        height: 128
+
+#Redraw the wireframe cube ~20x/sec, rotated by the latest tilt_pitch/tilt_roll
+#globals (fed from MQTT) and jittered while shake_active is true (tap event).
+#ESPHome's lvgl.canvas.draw_line action only accepts literal integer points
+#(it validates with isinstance(x, int), no !lambda), so per-frame coordinates
+#have to go through LVGL's canvas API directly. Using the plain per-pixel
+#lv_canvas_set_px() with a manual Bresenham plot here rather than the newer
+#layer/draw-descriptor API (lv_canvas_init_layer/lv_draw_line), since that
+#one hung the device - lv_canvas_set_px is the long-standing, simpler call.
+interval:
+  - interval: 50ms
+    then:
+      - lambda: |-
+          static const float verts[8][3] = {
+            {-1, -1, -1}, {1, -1, -1}, {1, 1, -1}, {-1, 1, -1},
+            {-1, -1, 1}, {1, -1, 1}, {1, 1, 1}, {-1, 1, 1},
+          };
+          static const int edges[12][2] = {
+            {0, 1}, {1, 2}, {2, 3}, {3, 0},
+            {4, 5}, {5, 6}, {6, 7}, {7, 4},
+            {0, 4}, {1, 5}, {2, 6}, {3, 7},
+          };
+
+          float pitch = id(tilt_pitch) * 3.14159265f / 180.0f;
+          float roll = id(tilt_roll) * 3.14159265f / 180.0f;
+          float cx = 64, cy = 64, scale = 30;
+
+          lv_canvas_fill_bg(id(face_canvas), lv_color_hex(0x000000), LV_OPA_COVER);
+
+          int sx[8], sy[8];
+          for (int i = 0; i < 8; i++) {
+            float x = verts[i][0], y = verts[i][1], z = verts[i][2];
+
+            // rotate around X axis (pitch)
+            float y1 = y * cosf(pitch) - z * sinf(pitch);
+            float z1 = y * sinf(pitch) + z * cosf(pitch);
+
+            // rotate around Y axis (roll)
+            float x2 = x * cosf(roll) + z1 * sinf(roll);
+            float z2 = -x * sinf(roll) + z1 * cosf(roll);
+
+            // simple perspective projection
+            float depth = 4.0f + z2;
+            float px = cx + (x2 * scale * 4.0f) / depth;
+            float py = cy + (y1 * scale * 4.0f) / depth;
+
+            if (id(shake_active)) {
+              px += (float) (random_uint32() % 7) - 3.0f;
+              py += (float) (random_uint32() % 7) - 3.0f;
+            }
+
+            sx[i] = (int) roundf(px);
+            sy[i] = (int) roundf(py);
+          }
+
+          lv_color_t line_color = lv_color_hex(0x00C8FF);
+
+          for (int i = 0; i < 12; i++) {
+            int a = edges[i][0], b = edges[i][1];
+            int x0 = sx[a], y0 = sy[a], x1 = sx[b], y1 = sy[b];
+
+            // Bresenham's line algorithm, plotting one pixel at a time via
+            // the plain lv_canvas_set_px() call.
+            int dx = abs(x1 - x0), sx_step = x0 < x1 ? 1 : -1;
+            int dy = -abs(y1 - y0), sy_step = y0 < y1 ? 1 : -1;
+            int err = dx + dy;
+
+            while (true) {
+              if (x0 >= 0 && x0 < 128 && y0 >= 0 && y0 < 128) {
+                lv_canvas_set_px(id(face_canvas), x0, y0, line_color, LV_OPA_COVER);
+              }
+              if (x0 == x1 && y0 == y1) break;
+              int e2 = 2 * err;
+              if (e2 >= dy) { err += dy; x0 += sx_step; }
+              if (e2 <= dx) { err += dx; y0 += sy_step; }
+            }
+          }
+
+          lv_obj_invalidate(id(face_canvas));
 
 #Add switches for the LCD backlight and speaker enable
 switch:
@@ -88,9 +265,15 @@ binary_sensor:
   - platform: gpio
     pin: GPIO42
     name: "Right Button"
-    filters: 
-      - invert:      
-    on_press: 
+    filters:
+      - invert:
+      # Debounce: an unfiltered GPIO can fire on_press many times within a
+      # few ms of mechanical bounce, stacking overlapping play_media/
+      # play_on_device_media_file calls on the same speaker - which has
+      # crashed the I2S audio pipeline (illegal instruction fault) on
+      # hardware.
+      - delayed_on_off: 25ms
+    on_press:
       then:
         - logger.log: "Right"
         - light.toggle:
