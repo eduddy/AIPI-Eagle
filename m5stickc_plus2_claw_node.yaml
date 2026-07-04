@@ -47,9 +47,10 @@ i2c:
   scan: true
 
 # Built-in passive buzzer, used for status/voice-assistant state beeps
+# (G2, not G35 - GPIO34-39 on the ESP32 are input-only and can't drive it)
 output:
   - platform: ledc
-    pin: GPIO35
+    pin: GPIO2
     id: buzzer_pwm
 
 rtttl:
@@ -113,7 +114,7 @@ font:
 display:
   - platform: mipi_spi
     id: claw_display
-    model: ST7789
+    model: ST7789V
     cs_pin: GPIO5
     dc_pin: GPIO14
     reset_pin: GPIO12
@@ -189,7 +190,6 @@ sensor:
     type: pitch
     name: "Claw Node Pitch"
     id: node_pitch
-    update_interval: 50ms
     on_value:
       then:
         - mqtt.publish:
@@ -199,7 +199,6 @@ sensor:
     type: roll
     name: "Claw Node Roll"
     id: node_roll
-    update_interval: 50ms
     on_value:
       then:
         - mqtt.publish:
@@ -211,17 +210,14 @@ sensor:
     type: acceleration_x
     id: accel_x
     internal: true
-    update_interval: 20ms
   - platform: motion
     type: acceleration_y
     id: accel_y
     internal: true
-    update_interval: 20ms
   - platform: motion
     type: acceleration_z
     id: accel_z
     internal: true
-    update_interval: 20ms
 
   - platform: template
     name: "Claw Node Accel Magnitude"
