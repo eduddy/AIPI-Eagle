@@ -140,14 +140,16 @@ display:
     cs_pin: GPIO15
     reset_pin: GPIO18
     dimensions: 128x128
-    rotation: 90
     invert_colors: true
     auto_clear_enabled: false
     update_interval: never
 
 #LVGL widget: a wireframe cube "avatar" that tilts with the claw node's
 #pitch/roll and jitters when it's tapped (see globals + interval below).
+#rotation moved here (from display:) since LVGL owns rotation once it's
+#driving the display.
 lvgl:
+  rotation: 90
   widgets:
     - canvas:
         id: face_canvas
