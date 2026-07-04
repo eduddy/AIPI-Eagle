@@ -8,6 +8,15 @@ esp32:
     type: esp-idf
   flash_size: 16MB
 
+# 16MB-flash ESP32-S3 modules are almost always paired with 8MB octal
+# PSRAM (e.g. N16R8). Without this, the LVGL canvas buffer, display
+# buffer, and the speaker's ring/DMA buffers all compete for the ~300KB
+# internal SRAM pool alone, which likely explains speaker allocation
+# failures under load. If boot logs show PSRAM isn't found, this may
+# need to be 'quad' instead - check your board's exact module datasheet.
+psram:
+  mode: octal
+
 # Enable logging
 logger:
 
