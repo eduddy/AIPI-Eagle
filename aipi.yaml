@@ -108,9 +108,17 @@ text_sensor:
     internal: true
     on_value:
       then:
-        - media_player.play_media:
-            id: speaker_media_player_id
-            media_url: !lambda 'return x;'
+        # Guard against empty/retained/duplicate payloads triggering an
+        # overlapping playback request while one is already in flight -
+        # concurrent play_media calls on the same speaker have crashed
+        # the I2S audio pipeline (illegal instruction fault) on hardware.
+        - if:
+            condition:
+              lambda: 'return !x.empty();'
+            then:
+              - media_player.play_media:
+                  id: speaker_media_player_id
+                  media_url: !lambda 'return x;'
 
 font:
   - file: "gfonts://Roboto"
@@ -246,9 +254,15 @@ binary_sensor:
   - platform: gpio
     pin: GPIO42
     name: "Right Button"
-    filters: 
-      - invert:      
-    on_press: 
+    filters:
+      - invert:
+      # Debounce: an unfiltered GPIO can fire on_press many times within a
+      # few ms of mechanical bounce, stacking overlapping play_media/
+      # play_on_device_media_file calls on the same speaker - which has
+      # crashed the I2S audio pipeline (illegal instruction fault) on
+      # hardware.
+      - delayed_on_off: 25ms
+    on_press:
       then:
         - logger.log: "Right"
         - light.toggle:
