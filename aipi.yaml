@@ -98,6 +98,20 @@ text_sensor:
                   id: shake_active
                   value: 'false'
 
+  # The M5Stick claw node has no local speaker, so it forwards the Home
+  # Assistant Assist pipeline's TTS reply URL here and the AiPi plays it
+  # through its own ES8311 speaker (see media_player: below).
+  - platform: mqtt_subscribe
+    name: "Claw Node TTS URL In"
+    id: node_tts_url_in
+    topic: clawnode/tts_url
+    internal: true
+    on_value:
+      then:
+        - media_player.play_media:
+            id: speaker_media_player_id
+            media_url: !lambda 'return x;'
+
 font:
   - file: "gfonts://Roboto"
     id: my_font

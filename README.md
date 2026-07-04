@@ -44,3 +44,8 @@ I was also running into issues using the left tactile button. Orginally this but
 - `aipi.yaml` subscribes to those topics and drives a wireframe cube drawn on an LVGL canvas: it tilts with the M5Stick's orientation and jitters briefly on a tap.
 
 Copy `secrets.yaml.example` to `secrets.yaml` and fill in your WiFi and MQTT broker details (any local Mosquitto broker works) before flashing both devices. Tune the tap threshold (`accel_mag > 2.0` in `m5stickc_plus2_claw_node.yaml`) once you see real values in the `clawnode/tap` MQTT topic.
+
+The M5Stick also has its own status display (built-in ST7789v2 LCD) showing live MQTT connection state, pitch/roll, and a "TAP!" flash, plus buzzer beeps on MQTT connect/disconnect and tap.
+
+### Voice command coupling
+Holding the M5Stick's front button (Button A) starts push-to-talk voice capture (its built-in SPM1423 PDM mic) straight into Home Assistant's Assist pipeline over the native API - releasing the button ends capture. The M5Stick has no real speaker, so instead of playing the reply locally it forwards the TTS reply's URL to the AiPi over MQTT (`clawnode/tts_url`), and the AiPi plays it through its own ES8311 speaker. The M5Stick's buzzer beeps at each voice-assistant stage (listening / replying / error) so you get feedback even without the AiPi in earshot. Requires a Home Assistant instance with an Assist pipeline already configured.
