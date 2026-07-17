@@ -1,0 +1,4 @@
+board: aipi_lite
+chip: esp32s3
+description: "Xorigin AiPi Lite (ESP32-S3, ES8311 audio codec, ST7735 128x128 LCD, WS2812 LED)"
+manufacturer: "Xorigin"

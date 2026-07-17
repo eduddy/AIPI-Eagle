@@ -1,0 +1,106 @@
+version: 1.0.0
+devices:
+  # WS2812 status LED (single pixel, GRB)
+  - name: led_strip
+    chip: ws2812
+    type: custom
+    version: default
+    init_skip: true
+    dependencies:
+      espressif/led_strip:
+        version: "^3.0"
+        public: true
+    config:
+      max_leds: 1
+    peripherals:
+      - name: rmt_tx
+
+  # ES8311 codec, playback path (speaker via onboard PA on GPIO9)
+  - name: audio_dac
+    chip: es8311
+    type: audio_codec
+    version: default
+    config:
+      adc_enabled: false
+      dac_enabled: true
+      dac_max_channel: 1
+      dac_channel_mask: "1"
+      mclk_enabled: true
+    peripherals:
+      - name: gpio_pa_control
+        gain: 6
+        active_level: 1
+      - name: i2s_audio_out
+      - name: i2c_master
+        address: 0x30
+        frequency: 400000
+
+  # ES8311 codec, capture path (onboard microphone)
+  - name: audio_adc
+    chip: es8311
+    type: audio_codec
+    version: default
+    config:
+      adc_enabled: true
+      dac_enabled: false
+      adc_max_channel: 1
+      adc_channel_mask: "1"
+      adc_init_gain: 0
+      mclk_enabled: true
+    peripherals:
+      - name: i2s_audio_in
+      - name: i2c_master
+        address: 0x30
+        frequency: 400000
+
+  # ST7735 128x128 SPI LCD.
+  # No built-in st7735 driver in ESP-Claw, so the panel is created by
+  # lcd_panel_factory_entry_t in setup_device.c using the
+  # teriyakigod/esp_lcd_st7735 registry component.
+  # swap_xy+mirror reproduce the "rotation: 90" of the ESPHome template;
+  # if the image is rotated or mirrored wrong, tune swap_xy/mirror_x/mirror_y.
+  - name: display_lcd
+    chip: st7735
+    type: display_lcd
+    sub_type: spi
+    version: default
+    dependencies:
+      teriyakigod/esp_lcd_st7735: "*"
+    config:
+      mirror_x: false
+      mirror_y: true
+      swap_xy: true
+      invert_color: true
+      x_max: 128
+      y_max: 128
+      io_spi_config:
+        cs_gpio_num: 15
+        dc_gpio_num: 7
+        spi_mode: 0
+        pclk_hz: 20000000
+      lcd_panel_config:
+        reset_gpio_num: 18
+        rgb_ele_order: LCD_RGB_ELEMENT_ORDER_BGR
+        bits_per_pixel: 16
+        data_endian: LCD_RGB_DATA_ENDIAN_BIG
+        vendor_config: NULL
+    peripherals:
+      - name: spi_display
+
+  # LCD backlight PWM control
+  - name: lcd_brightness
+    type: ledc_ctrl
+    version: default
+    peripherals:
+      - name: ledc_backlight
+
+  # Right tactile button (active low). The left button is not wired
+  # directly to a GPIO (it is a sleep/wake circuit) and is not exposed.
+  - name: buttons
+    chip: gpio_button
+    type: custom
+    version: 1.0.0
+    init_skip: true
+    config:
+      right_button_gpio: 42
+      active_level: 0
