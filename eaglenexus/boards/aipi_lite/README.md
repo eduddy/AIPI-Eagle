@@ -61,6 +61,38 @@ idf.py flash monitor
 4. **Audio** — speaker distorts above ~75% volume (hardware limit observed
    under ESPHome). Mic and speaker share one I2S port, as on the Moji board.
 
+## Voice interaction (button push-to-talk)
+
+The board ships a `voice_ptt` skill that uses the right button as the wake
+word, since ESP-Claw has no wake-word engine:
+
+- **Double click** — start listening (LED cyan, high beep)
+- **Single click while listening** — stop; audio is transcribed and handed to
+  the agent as a chat message on channel `voice`
+- **Long press while listening** — cancel without sending
+- **Single click while idle** — interrupt a reply that is being spoken
+
+Flow: `voice_ptt.lua` (autostarted at boot by a seeded router rule) records
+mic PCM, wraps it in WAV, base64s it into a JSON request to the configured
+STT endpoint (default Gemini `generateContent` — chosen because the
+`http_request` capability has no multipart support), and publishes the
+transcript so the stock router rule hands it to the agent. The agent's reply
+is matched by the seeded `voice_agent_reply_speak` rule and spoken by
+`voice_speak.lua` through an OpenAI-compatible `/v1/audio/speech` endpoint
+(binary response saved to `/fatfs/tmp`, played on the ES8311 speaker).
+
+Setup after first boot:
+
+1. Put your keys in `/fatfs/skills/voice_ptt/config.json` (`stt.api_key`,
+   `tts.api_key`; leave `tts.api_key` empty for a silent node).
+2. Allowlist the endpoints via the agent chat (`search_http_allowlist`):
+   `generativelanguage.googleapis.com` and `api.openai.com`.
+
+These files are seeded through `/system/.recovery`, so they land in `/fatfs`
+on first boot (or whenever missing) and your on-device edits survive
+reflashes. The seeded `router_rules.json` is a copy of the stock rules plus
+the two voice rules — if upstream changes its defaults, refresh the copy.
+
 ## Known limitations
 
 - The **left button** is a sleep/wake circuit, not a plain GPIO — not exposed.
