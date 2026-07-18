@@ -1,0 +1,29 @@
+{
+  "button_gpio": 42,
+  "active_level": 0,
+  "long_press_ms": 1200,
+  "led": { "io": 46, "count": 1, "brightness": 60 },
+  "record": {
+    "sample_rate": 16000,
+    "max_ms": 10000,
+    "chunk_ms": 100,
+    "mic_volume": 85
+  },
+  "stt": {
+    "endpoint": "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent",
+    "api_key": "",
+    "prompt": "Transcribe this audio exactly. Reply with only the transcript text, no quotes and no commentary.",
+    "timeout_ms": 30000
+  },
+  "tts": {
+    "enabled": true,
+    "endpoint": "https://api.openai.com/v1/audio/speech",
+    "api_key": "",
+    "model": "gpt-4o-mini-tts",
+    "voice": "alloy",
+    "response_format": "mp3",
+    "speaker_volume": 70,
+    "timeout_ms": 45000
+  },
+  "chat_id": "aipi_voice"
+}

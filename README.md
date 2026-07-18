@@ -32,6 +32,14 @@ Download to the device using the web flasher and it should come online in ESPHom
 
 <img src="aipi-internal.jpg" width="600">
 
+## EagleNexus / ESP-Claw prototype node
+The [eaglenexus/boards/aipi_lite](eaglenexus/boards/aipi_lite/) directory contains a prototype board
+definition for running the [EagleNexus](https://github.com/eduddy/EagleNexus) fork of Espressif's
+ESP-Claw edge-agent framework on this hardware, as an alternative to ESPHome. It turns the AiPi into
+a standalone agent node (on-device agent loop, Lua-defined behaviors, MCP client/server) rather than
+a Home Assistant peripheral. See that directory's README for build/flash instructions and the
+first-boot checklist.
+
 ## Next steps
 I was able to receive data from the onboard microphone but I ran into issues getting the microphone to respond to wake words through Home Assistant's Voice Assistant feature. With that figured out, this should be a very low cost way to add a local Voice Assistant to your Home Assistant setup.
 
